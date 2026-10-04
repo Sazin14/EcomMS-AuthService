@@ -11,6 +11,9 @@ use Illuminate\Notifications\Notifiable;
 class Staff extends Authenticatable implements JWTSubject
 {
     use HasRoles, Notifiable;
+    protected $guard_name = 'staff';
+
+    protected $table = 'staffs';
 
     protected $fillable = [
         'name',

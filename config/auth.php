@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+
 
 return [
 
@@ -16,9 +16,9 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
-    ],
+        'guard' => 'staff',
+        'passwords' => 'staffs',
+        ],
 
     /*
     |--------------------------------------------------------------------------
@@ -38,11 +38,16 @@ return [
     */
 
     'guards' => [
-        'web' => [
-            'driver' => 'session',
-            'provider' => 'users',
-        ],
+    'staff' => [
+        'driver' => 'jwt',
+        'provider' => 'staffs',
     ],
+
+    'customer' => [
+        'driver' => 'jwt',
+        'provider' => 'customers',
+    ],
+],
 
     /*
     |--------------------------------------------------------------------------
@@ -62,15 +67,15 @@ return [
     */
 
     'providers' => [
-        'users' => [
+        'staffs' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
+            'model' => App\Models\Staff::class,
         ],
 
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'customers' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Customer::class,
+        ],
     ],
 
     /*
@@ -93,9 +98,16 @@ return [
     */
 
     'passwords' => [
-        'users' => [
-            'provider' => 'users',
+        'staffs' => [
+            'provider' => 'staffs',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+
+        'customers' => [
+            'provider' => 'customers',
+            'table' => 'password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,
         ],
