@@ -10,26 +10,13 @@ use RuntimeException;
 class AuthService
 {
     public function __construct(
-        private RefreshTokenService $refreshTokenService
+        private RefreshTokenService $refreshTokenService,
+        private AuthorizationCacheService $authorizationCacheService,
     ) {
     }
 
-    //
-
-    public function createStaff(array $data): Staff
-    {
-        $staff = Staff::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => $data['password'],
-        ]);
-
-        if (isset($data['role'])) {
-            $staff->assignRole($data['role']);
-        }
-
-        return $staff;
-    }
+    
+    
 
     public function loginStaff(array $credentials): array
     {
@@ -54,8 +41,11 @@ class AuthService
         $this->refreshTokenService->revoke($refreshToken);
     }
 
-
-    //
+    /*
+    |--------------------------------------------------------------------------
+    | Customer
+    |--------------------------------------------------------------------------
+    */
 
     public function registerCustomer(array $data): Customer
     {
@@ -89,8 +79,11 @@ class AuthService
         $this->refreshTokenService->revoke($refreshToken);
     }
 
-
-    //
+    /*
+    |--------------------------------------------------------------------------
+    | Login
+    |--------------------------------------------------------------------------
+    */
 
     private function login(
         string $guard,
@@ -104,6 +97,14 @@ class AuthService
         }
 
         $user = auth($guard)->user();
+
+        /*
+         * Staff authorization data is cached only after
+         * authentication succeeds.
+         */
+        if ($userType === 'staff') {
+            $this->authorizationCacheService->put($user);
+        }
 
         $refreshToken = $this->refreshTokenService->create(
             userId: $user->getKey(),
@@ -123,6 +124,12 @@ class AuthService
             ],
         ];
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Refresh
+    |--------------------------------------------------------------------------
+    */
 
     private function refresh(
         string $guard,
@@ -150,11 +157,23 @@ class AuthService
 
         $accessToken = auth($guard)->login($user);
 
+        /*
+         * Usually we don't need to rebuild the authorization
+         * cache on every refresh because roles/permissions
+         * have not changed.
+         *
+         * However, refreshing it here is acceptable if you
+         * want the cache to self-heal whenever the staff logs in.
+         */
+        if ($userType === 'staff') {
+            $this->authorizationCacheService->put($user);
+        }
+
         return [
-            'access_token' => $token,
+            'access_token' => $accessToken,
             'token_type' => 'Bearer',
             'expires_in' => config('jwt.ttl') * 60,
-            'refresh_token' => $refreshToken,
+            'refresh_token' => $newRefreshToken,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -163,6 +182,12 @@ class AuthService
             ],
         ];
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Find User
+    |--------------------------------------------------------------------------
+    */
 
     private function findUser(
         string $userType,

@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\AuthService;
 use App\Models\Staff;
+use App\Services\AuthService;
+use App\Services\StaffManagementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class StaffController extends Controller
 {
     public function __construct(
-        private AuthService $authService
+        private AuthService $authService,
+        private StaffManagementService $staffManagementService
     ) {
     }
 
@@ -34,7 +37,11 @@ class StaffController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+            ],
 
             'email' => [
                 'required',
@@ -56,7 +63,10 @@ class StaffController extends Controller
             ],
         ]);
 
-        $staff = $this->authService->createStaff($validated);
+        $staff = $this->staffManagementService->create(
+            actor: auth('staff')->user(),
+            data: $validated
+        );
 
         return response()->json([
             'message' => 'Staff created successfully.',
@@ -95,7 +105,11 @@ class StaffController extends Controller
         Staff $staff
     ): JsonResponse {
         $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
+            'name' => [
+                'sometimes',
+                'string',
+                'max:255',
+            ],
 
             'email' => [
                 'sometimes',
@@ -123,11 +137,20 @@ class StaffController extends Controller
      */
     public function destroy(Staff $staff): JsonResponse
     {
-        $staff->delete();
+        try {
+            $this->staffManagementService->delete(
+                actor: auth('staff')->user(),
+                target: $staff
+            );
 
-        return response()->json([
-            'message' => 'Staff deleted successfully.',
-        ]);
+            return response()->json([
+                'message' => 'Staff deleted successfully.',
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        }
     }
 
     /**
@@ -145,12 +168,24 @@ class StaffController extends Controller
             ],
         ]);
 
-        $staff->assignRole($validated['role']);
+        try {
+            $this->staffManagementService->assignRole(
+                actor: auth('staff')->user(),
+                target: $staff,
+                roleName: $validated['role']
+            );
 
-        return response()->json([
-            'message' => 'Role assigned successfully.',
-            'roles' => $staff->getRoleNames(),
-        ]);
+            $staff->refresh();
+
+            return response()->json([
+                'message' => 'Role assigned successfully.',
+                'roles' => $staff->getRoleNames(),
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        }
     }
 
     /**
@@ -168,11 +203,93 @@ class StaffController extends Controller
             ],
         ]);
 
-        $staff->removeRole($validated['role']);
+        try {
+            $this->staffManagementService->removeRole(
+                actor: auth('staff')->user(),
+                target: $staff,
+                roleName: $validated['role']
+            );
 
-        return response()->json([
-            'message' => 'Role removed successfully.',
-            'roles' => $staff->getRoleNames(),
+            $staff->refresh();
+
+            return response()->json([
+                'message' => 'Role removed successfully.',
+                'roles' => $staff->getRoleNames(),
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        }
+    }
+
+    /**
+     * Assign a direct permission to a staff member.
+     */
+    public function assignPermission(
+        Request $request,
+        Staff $staff
+    ): JsonResponse {
+        $validated = $request->validate([
+            'permission' => [
+                'required',
+                'string',
+                'exists:permissions,name',
+            ],
         ]);
+
+        try {
+            $this->staffManagementService->assignPermission(
+                actor: auth('staff')->user(),
+                target: $staff,
+                permissionName: $validated['permission']
+            );
+
+            $staff->refresh();
+
+            return response()->json([
+                'message' => 'Permission assigned successfully.',
+                'permissions' => $staff->getPermissionNames(),
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        }
+    }
+
+    /**
+     * Revoke a direct permission from a staff member.
+     */
+    public function revokePermission(
+        Request $request,
+        Staff $staff
+    ): JsonResponse {
+        $validated = $request->validate([
+            'permission' => [
+                'required',
+                'string',
+                'exists:permissions,name',
+            ],
+        ]);
+
+        try {
+            $this->staffManagementService->revokePermission(
+                actor: auth('staff')->user(),
+                target: $staff,
+                permissionName: $validated['permission']
+            );
+
+            $staff->refresh();
+
+            return response()->json([
+                'message' => 'Permission revoked successfully.',
+                'permissions' => $staff->getPermissionNames(),
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        }
     }
 }
