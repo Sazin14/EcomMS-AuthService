@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\CustomerAuthController;
 use App\Http\Controllers\Auth\StaffAuthController;
+use App\Http\Controllers\Admin\StaffController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
