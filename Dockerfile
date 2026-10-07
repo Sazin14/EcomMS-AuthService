@@ -44,18 +44,12 @@ RUN apk add --no-cache \
     bash \
     icu-dev \
     libzip-dev \
-    oniguruma-dev \
     postgresql-dev \
-    sqlite-dev \
     && docker-php-ext-install \
         bcmath \
         intl \
-        mbstring \
-        opcache \
-        pdo \
         pdo_mysql \
         pdo_pgsql \
-        pdo_sqlite \
         zip
 
 # Composer dependencies
