@@ -1,7 +1,7 @@
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "devops" || $CI_COMMIT_BRANCH == "main")'
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "devops" || $CI_COMMIT_BRANCH == "master")'
     - when: never
 
 stages:
@@ -35,7 +35,7 @@ build_test_push:
     - dell-local
 
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "devops" || $CI_COMMIT_BRANCH == "main")'
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_BRANCH == "devops" || $CI_COMMIT_BRANCH == "master")'
 
   before_script:
     - docker info
@@ -54,7 +54,7 @@ build_test_push:
       if [ "$CI_COMMIT_BRANCH" = "devops" ]; then
         IMAGE_BRANCH="$CI_REGISTRY_IMAGE:devops"
       else
-        IMAGE_BRANCH="$CI_REGISTRY_IMAGE:main"
+        IMAGE_BRANCH="$CI_REGISTRY_IMAGE:master"
       fi
     - echo "Branch image $IMAGE_BRANCH"
     - echo "=== Tagging branch image ==="
