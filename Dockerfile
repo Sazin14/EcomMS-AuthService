@@ -1,3 +1,4 @@
+
 # =========================
 # Stage 1: Build frontend assets
 # =========================
@@ -15,12 +16,35 @@ RUN npm run build
 
 
 # =========================
-# Stage 2: Install PHP dependencies
+# Stage 2: Get Composer binary
 # =========================
-FROM composer:2 AS composer
+FROM composer:2 AS composer-bin
+
+
+# =========================
+# Stage 3: Install PHP dependencies
+# =========================
+FROM php:8.4-cli-alpine AS composer
 
 WORKDIR /app
 
+# Install system dependencies and PHP extensions required by Composer
+RUN apk add --no-cache \
+    icu-dev \
+    libzip-dev \
+    postgresql-dev \
+    && docker-php-ext-install \
+        bcmath \
+        intl \
+        pdo_mysql \
+        pdo_pgsql \
+        sockets \
+        zip
+
+# Copy Composer binary
+COPY --from=composer-bin /usr/bin/composer /usr/bin/composer
+
+# Install production dependencies
 COPY composer.json composer.lock ./
 
 RUN composer install \
@@ -33,13 +57,13 @@ RUN composer install \
 
 
 # =========================
-# Stage 3: Production image
+# Stage 4: Production image
 # =========================
 FROM php:8.4-fpm-alpine
 
 WORKDIR /var/www/html
 
-# System dependencies and PHP extensions
+# Install system dependencies and PHP extensions
 RUN apk add --no-cache \
     bash \
     icu-dev \
@@ -50,18 +74,19 @@ RUN apk add --no-cache \
         intl \
         pdo_mysql \
         pdo_pgsql \
+        sockets \
         zip
 
-# Composer dependencies
+# Copy Composer dependencies
 COPY --from=composer /app/vendor ./vendor
 
-# Application source
+# Copy application source
 COPY . .
 
-# Compiled frontend assets
+# Copy compiled frontend assets
 COPY --from=frontend /app/public/build ./public/build
 
-# Laravel writable directories
+# Create Laravel writable directories and set permissions
 RUN mkdir -p \
     storage/framework/cache \
     storage/framework/sessions \
