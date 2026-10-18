@@ -32,6 +32,7 @@ WORKDIR /app
 RUN apk add --no-cache \
     icu-dev \
     libzip-dev \
+    linux-headers \
     postgresql-dev \
     && docker-php-ext-install \
         bcmath \
@@ -68,6 +69,7 @@ RUN apk add --no-cache \
     bash \
     icu-dev \
     libzip-dev \
+    linux-headers \
     postgresql-dev \
     && docker-php-ext-install \
         bcmath \
