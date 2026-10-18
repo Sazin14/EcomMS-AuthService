@@ -39,7 +39,7 @@ build_test_push:
 
   before_script:
     - docker info
-    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_JOB_TOKEN" | docker login "$CI_REGISTRY" -u gitlab-ci-token --password-stdin
 
   script:
     - echo "=== Auth Service Branch CI ==="
