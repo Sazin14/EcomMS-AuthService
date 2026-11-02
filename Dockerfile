@@ -1,4 +1,3 @@
-
 # =========================
 # Stage 1: Build frontend assets
 # =========================
@@ -28,13 +27,16 @@ FROM php:8.4-cli-alpine AS composer
 
 WORKDIR /app
 
-# Install system dependencies and PHP extensions required by Composer
+# Install build dependencies and PHP extensions
 RUN apk add --no-cache \
+    $PHPIZE_DEPS \
     icu-dev \
     libzip-dev \
     linux-headers \
     postgresql-dev \
-    && docker-php-ext-install \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && docker-php-ext-install -j"$(nproc)" \
         bcmath \
         intl \
         pdo_mysql \
@@ -64,20 +66,28 @@ FROM php:8.4-fpm-alpine
 
 WORKDIR /var/www/html
 
-# Install system dependencies and PHP extensions
-RUN apk add --no-cache \
-    bash \
-    icu-dev \
-    libzip-dev \
-    linux-headers \
-    postgresql-dev \
-    && docker-php-ext-install \
+# Install runtime and build dependencies
+RUN apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS \
+        icu-dev \
+        libzip-dev \
+        linux-headers \
+        postgresql-dev \
+    && apk add --no-cache \
+        bash \
+        icu-libs \
+        libzip \
+        libpq \
+    && docker-php-ext-install -j"$(nproc)" \
         bcmath \
         intl \
         pdo_mysql \
         pdo_pgsql \
         sockets \
-        zip
+        zip \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apk del .build-deps
 
 # Copy Composer dependencies
 COPY --from=composer /app/vendor ./vendor
