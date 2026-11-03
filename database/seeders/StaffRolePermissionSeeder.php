@@ -62,6 +62,25 @@ class StaffRolePermissionSeeder extends Seeder
             'inventory.transfer',
             'inventory.receive',
             'inventory.reserve',
+            'inventory.manage',      // reorder levels, pre-order / flash-sale policy
+            'warehouse.manage',      // create / edit warehouses
+
+            // Purchasing (InventoryService)
+            'purchasing.view',
+            'purchasing.manage',
+
+            // Orders (OrderService)
+            'order.view',
+            'order.confirm',
+            'order.cancel',
+            'fulfillment.manage',
+            'payment.manage',
+            'return.manage',
+            'refund.manage',
+
+            // Notifications (NotificationService)
+            'notification.view',
+            'notification.manage',
 
             // Sales
             'sales.view',
@@ -178,6 +197,9 @@ class StaffRolePermissionSeeder extends Seeder
             'sales.view',
             'sales.report',
 
+            'order.view',
+            'notification.view',
+
             'dashboard.view',
             'report.view',
         ]);
@@ -253,6 +275,10 @@ class StaffRolePermissionSeeder extends Seeder
             'inventory.transfer',
             'inventory.receive',
             'inventory.reserve',
+            'inventory.manage',
+            'warehouse.manage',
+            'purchasing.view',
+            'purchasing.manage',
         ]);
 
         /*
@@ -272,6 +298,12 @@ class StaffRolePermissionSeeder extends Seeder
             'sale.create',
             'sale.update',
             'sale.cancel',
+
+            'order.view',
+            'order.confirm',
+            'order.cancel',
+            'fulfillment.manage',
+            'return.manage',
 
             'promotion.view',
             'promotion.create',
