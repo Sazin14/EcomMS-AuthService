@@ -82,8 +82,25 @@ class StaffController extends Controller
     /**
      * Show a specific staff member.
      */
+    // public function show(Staff $staff): JsonResponse
+    // {
+    //     $staff->load('roles', 'permissions');
+
+    //     return response()->json([
+    //         'staff' => [
+    //             'id' => $staff->id,
+    //             'name' => $staff->name,
+    //             'email' => $staff->email,
+    //             'roles' => $staff->getRoleNames(),
+    //             'permissions' => $staff->getPermissionNames(),
+    //         ],
+    //     ]);
+    // }
+
     public function show(Staff $staff): JsonResponse
     {
+        
+
         $staff->load('roles', 'permissions');
 
         return response()->json([
@@ -92,7 +109,10 @@ class StaffController extends Controller
                 'name' => $staff->name,
                 'email' => $staff->email,
                 'roles' => $staff->getRoleNames(),
-                'permissions' => $staff->getPermissionNames(),
+                // everything the user can do (via roles + direct)
+                'permissions' => $staff->getAllPermissions()->pluck('name')->values(),
+                // only permissions granted directly to this user
+                'direct_permissions' => $staff->getPermissionNames(),
             ],
         ]);
     }

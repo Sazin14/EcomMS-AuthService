@@ -1,0 +1,551 @@
+diff --git a/.env.example b/.env.example
+index 40bb13b..b98676d 100644
+--- a/.env.example
++++ b/.env.example
+@@ -63,3 +63,12 @@ AWS_BUCKET=
+ AWS_USE_PATH_STYLE_ENDPOINT=false
+ 
+ VITE_APP_NAME="${APP_NAME}"
++
++# JWT (RS256): generate storage/keys/jwt-private.pem and jwt-public.pem
++#   mkdir -p storage/keys
++#   openssl genrsa -out storage/keys/jwt-private.pem 2048
++#   openssl rsa -in storage/keys/jwt-private.pem -pubout -out storage/keys/jwt-public.pem
++JWT_ALGO=RS256
++JWT_PASSPHRASE=
++JWT_TTL=60
++JWT_REFRESH_TTL=20160
+diff --git a/app/Http/Controllers/Admin/PermissionController.php b/app/Http/Controllers/Admin/PermissionController.php
+new file mode 100644
+index 0000000..4f825e0
+--- /dev/null
++++ b/app/Http/Controllers/Admin/PermissionController.php
+@@ -0,0 +1,51 @@
++<?php
++
++namespace App\Http\Controllers\Admin;
++
++use App\Http\Controllers\Controller;
++use Illuminate\Http\JsonResponse;
++use Spatie\Permission\Models\Permission;
++use Spatie\Permission\Models\Role;
++
++/**
++ * Read-only lookups for the admin UI (role dropdowns, permission pickers).
++ * Granting/revoking goes through StaffController so the role-hierarchy
++ * rules in StaffManagementService always apply.
++ */
++class PermissionController extends Controller
++{
++    public function permissions(): JsonResponse
++    {
++        if (! auth('staff')->user()->can('permission.view')) {
++            return response()->json([
++                'message' => 'You do not have permission [permission.view].',
++            ], 403);
++        }
++
++        return response()->json([
++            'permissions' => Permission::where('guard_name', 'staff')
++                ->orderBy('name')
++                ->pluck('name'),
++        ]);
++    }
++
++    public function roles(): JsonResponse
++    {
++        if (! auth('staff')->user()->can('role.view')) {
++            return response()->json([
++                'message' => 'You do not have permission [role.view].',
++            ], 403);
++        }
++
++        return response()->json([
++            'roles' => Role::where('guard_name', 'staff')
++                ->with('permissions:id,name')
++                ->orderBy('name')
++                ->get()
++                ->map(fn (Role $role) => [
++                    'name' => $role->name,
++                    'permissions' => $role->permissions->pluck('name')->values(),
++                ]),
++        ]);
++    }
++}
+diff --git a/app/Http/Controllers/Admin/StaffController.php b/app/Http/Controllers/Admin/StaffController.php
+index 05f0beb..49bea69 100644
+--- a/app/Http/Controllers/Admin/StaffController.php
++++ b/app/Http/Controllers/Admin/StaffController.php
+@@ -24,6 +24,10 @@ public function __construct(
+      */
+     public function index(): JsonResponse
+     {
++        if (! auth('staff')->user()->can('staff.view')) {
++            return $this->forbidden('staff.view');
++        }
++
+         $staff = Staff::with('roles')
+             ->latest()
+             ->paginate(20);
+@@ -63,10 +67,16 @@ public function store(Request $request): JsonResponse
+             ],
+         ]);
+ 
+-        $staff = $this->staffManagementService->create(
+-            actor: auth('staff')->user(),
+-            data: $validated
+-        );
++        try {
++            $staff = $this->staffManagementService->create(
++                actor: auth('staff')->user(),
++                data: $validated
++            );
++        } catch (RuntimeException $e) {
++            return response()->json([
++                'message' => $e->getMessage(),
++            ], 403);
++        }
+ 
+         return response()->json([
+             'message' => 'Staff created successfully.',
+@@ -84,6 +94,10 @@ public function store(Request $request): JsonResponse
+      */
+     public function show(Staff $staff): JsonResponse
+     {
++        if (! auth('staff')->user()->can('staff.view')) {
++            return $this->forbidden('staff.view');
++        }
++
+         $staff->load('roles', 'permissions');
+ 
+         return response()->json([
+@@ -120,7 +134,17 @@ public function update(
+             ],
+         ]);
+ 
+-        $staff->update($validated);
++        try {
++            $staff = $this->staffManagementService->update(
++                actor: auth('staff')->user(),
++                target: $staff,
++                data: $validated
++            );
++        } catch (RuntimeException $e) {
++            return response()->json([
++                'message' => $e->getMessage(),
++            ], 403);
++        }
+ 
+         return response()->json([
+             'message' => 'Staff updated successfully.',
+@@ -292,4 +316,11 @@ public function revokePermission(
+             ], 403);
+         }
+     }
+-}
+\ No newline at end of file
++
++    private function forbidden(string $permission): JsonResponse
++    {
++        return response()->json([
++            'message' => "You do not have permission [{$permission}].",
++        ], 403);
++    }
++}
+diff --git a/app/Http/Controllers/Auth/CustomerAuthController.php b/app/Http/Controllers/Auth/CustomerAuthController.php
+index 63b165f..a4d63a5 100644
+--- a/app/Http/Controllers/Auth/CustomerAuthController.php
++++ b/app/Http/Controllers/Auth/CustomerAuthController.php
+@@ -75,4 +75,18 @@ public function logout(RefreshTokenRequest $request): JsonResponse
+             'message' => 'Logged out successfully.',
+         ]);
+     }
+-}
+\ No newline at end of file
++
++    public function me(): JsonResponse
++    {
++        $customer = auth('customer')->user();
++
++        return response()->json([
++            'user' => [
++                'id' => $customer->id,
++                'name' => $customer->name,
++                'email' => $customer->email,
++                'type' => 'customer',
++            ],
++        ]);
++    }
++}
+diff --git a/app/Http/Controllers/Auth/StaffAuthController.php b/app/Http/Controllers/Auth/StaffAuthController.php
+index d6af3ef..a08644e 100644
+--- a/app/Http/Controllers/Auth/StaffAuthController.php
++++ b/app/Http/Controllers/Auth/StaffAuthController.php
+@@ -56,4 +56,22 @@ public function logout(RefreshTokenRequest $request): JsonResponse
+             'message' => 'Logged out successfully.',
+         ]);
+     }
+-}
+\ No newline at end of file
++
++    public function me(): JsonResponse
++    {
++        $staff = auth('staff')->user();
++
++        return response()->json([
++            'user' => [
++                'id' => $staff->id,
++                'name' => $staff->name,
++                'email' => $staff->email,
++                'type' => 'staff',
++                'roles' => $staff->getRoleNames(),
++                'permissions' => $staff->getAllPermissions()
++                    ->pluck('name')
++                    ->values(),
++            ],
++        ]);
++    }
++}
+diff --git a/app/Http/Controllers/PermissionController.php b/app/Http/Controllers/PermissionController.php
+deleted file mode 100644
+index 55cdb9a..0000000
+--- a/app/Http/Controllers/PermissionController.php
++++ /dev/null
+@@ -1,119 +0,0 @@
+-<?php
+-
+-namespace App\Http\Controllers\Admin;
+-
+-use App\Http\Controllers\Controller;
+-use App\Models\Staff;
+-use Illuminate\Http\JsonResponse;
+-use Illuminate\Http\Request;
+-use Spatie\Permission\Models\Permission;
+-
+-class PermissionController extends Controller
+-{
+-    /**
+-     * List available permissions.
+-     */
+-    public function index(): JsonResponse
+-    {
+-        $permissions = Permission::where(
+-            'guard_name',
+-            'staff'
+-        )->get();
+-
+-        return response()->json([
+-            'permissions' => $permissions,
+-        ]);
+-    }
+-
+-    /**
+-     * Create a new permission.
+-     */
+-    public function store(Request $request): JsonResponse
+-    {
+-        $validated = $request->validate([
+-            'name' => [
+-                'required',
+-                'string',
+-                'max:255',
+-                'unique:permissions,name',
+-            ],
+-        ]);
+-
+-        $permission = Permission::create([
+-            'name' => $validated['name'],
+-            'guard_name' => 'staff',
+-        ]);
+-
+-        return response()->json([
+-            'message' => 'Permission created successfully.',
+-            'permission' => $permission,
+-        ], 201);
+-    }
+-
+-    /**
+-     * Give a direct permission to a staff member.
+-     */
+-    public function assign(
+-        Request $request,
+-        Staff $staff
+-    ): JsonResponse {
+-        $validated = $request->validate([
+-            'permission' => [
+-                'required',
+-                'string',
+-                'exists:permissions,name',
+-            ],
+-        ]);
+-
+-        $staff->givePermissionTo(
+-            $validated['permission']
+-        );
+-
+-        return response()->json([
+-            'message' => 'Permission assigned successfully.',
+-            'permissions' => $staff->getAllPermissions()
+-                ->pluck('name')
+-                ->values(),
+-        ]);
+-    }
+-
+-    /**
+-     * Remove a direct permission from a staff member.
+-     */
+-    public function revoke(
+-        Request $request,
+-        Staff $staff
+-    ): JsonResponse {
+-        $validated = $request->validate([
+-            'permission' => [
+-                'required',
+-                'string',
+-                'exists:permissions,name',
+-            ],
+-        ]);
+-
+-        $staff->revokePermissionTo(
+-            $validated['permission']
+-        );
+-
+-        return response()->json([
+-            'message' => 'Permission revoked successfully.',
+-            'permissions' => $staff->getAllPermissions()
+-                ->pluck('name')
+-                ->values(),
+-        ]);
+-    }
+-
+-    /**
+-     * Show direct permissions assigned to a staff member.
+-     */
+-    public function staffPermissions(
+-        Staff $staff
+-    ): JsonResponse {
+-        return response()->json([
+-            'permissions' => $staff->getDirectPermissions()
+-                ->pluck('name')
+-                ->values(),
+-        ]);
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/Services/RefreshTokenService.php b/app/Services/RefreshTokenService.php
+index cb1b448..1855cce 100644
+--- a/app/Services/RefreshTokenService.php
++++ b/app/Services/RefreshTokenService.php
+@@ -8,6 +8,7 @@
+ 
+ class RefreshTokenService
+ {
++    private const REUSE_GRACE_SECONDS = 10;
+     
+     public function create(
+         int $userId,
+@@ -40,6 +41,12 @@ public function create(
+             json_encode($data)
+         );
+ 
++        // Index the token by family so the whole family can be revoked
++        // without scanning Redis (KEYS also breaks with a key prefix).
++        $familyKey = $this->familyKey($familyId);
++        Redis::sadd($familyKey, $tokenHash);
++        Redis::expire($familyKey, (int) $ttl);
++
+         return $token;
+     }
+ 
+@@ -58,7 +65,7 @@ public function validate(string $token): array
+         $data = json_decode($data, true);
+ 
+         if ($data['revoked'] ?? false) {
+-            throw new RuntimeException('Refresh token has been revoked.');
++            $this->handleRevokedUse($data);
+         }
+ 
+         if (($data['expires_at'] ?? 0) < now()->timestamp) {
+@@ -87,6 +94,7 @@ public function revoke(string $token): void
+         $data = json_decode($data, true);
+ 
+         $data['revoked'] = true;
++        $data['revoked_at'] ??= now()->timestamp;
+ 
+         $ttl = Redis::ttl($key);
+ 
+@@ -99,17 +107,33 @@ public function revoke(string $token): void
+         }
+     }
+ 
++    /**
++     * A revoked token was presented. Inside a short grace window this is
++     * most likely the frontend firing parallel refresh calls, so just
++     * reject. Outside it, treat it as token theft and kill the family.
++     */
++    private function handleRevokedUse(array $data): never
++    {
++        $revokedAt = $data['revoked_at'] ?? 0;
+ 
++        if (now()->timestamp - $revokedAt > self::REUSE_GRACE_SECONDS) {
++            $this->revokeFamily($data['family_id']);
++
++            throw new RuntimeException(
++                'Refresh token reuse detected. Token family revoked.'
++            );
++        }
++
++        throw new RuntimeException('Refresh token has been revoked.');
++    }
+ 
+     public function revokeFamily(string $familyId): void
+     {
+-        $keys = Redis::keys('auth:refresh:*');
++        $hashes = Redis::smembers($this->familyKey($familyId));
+ 
+-        if (!is_array($keys)) {
+-            return;
+-        }
++        foreach ($hashes ?: [] as $tokenHash) {
++            $key = $this->key($tokenHash);
+ 
+-        foreach ($keys as $key) {
+             $data = Redis::get($key);
+ 
+             if ($data === null) {
+@@ -118,26 +142,17 @@ public function revokeFamily(string $familyId): void
+ 
+             $data = json_decode($data, true);
+ 
+-            if (($data['family_id'] ?? null) !== $familyId) {
+-                continue;
+-            }
+-
+             $data['revoked'] = true;
++            $data['revoked_at'] ??= now()->timestamp;
+ 
+             $ttl = Redis::ttl($key);
+ 
+             if ($ttl > 0) {
+-                Redis::setex(
+-                    $key,
+-                    $ttl,
+-                    json_encode($data)
+-                );
++                Redis::setex($key, $ttl, json_encode($data));
+             }
+         }
+     }
+ 
+-    
+-
+     public function rotate(string $token): string
+     {
+         $tokenHash = hash('sha256', $token);
+@@ -159,11 +174,7 @@ public function rotate(string $token): string
+         * This indicates possible token theft/reuse.
+         */
+         if ($data['revoked'] ?? false) {
+-            $this->revokeFamily($data['family_id']);
+-
+-            throw new RuntimeException(
+-                'Refresh token reuse detected. Token family revoked.'
+-            );
++            $this->handleRevokedUse($data);
+         }
+ 
+         if (($data['expires_at'] ?? 0) < now()->timestamp) {
+@@ -189,4 +200,9 @@ private function key(string $tokenHash): string
+     {
+         return "auth:refresh:{$tokenHash}";
+     }
++
++    private function familyKey(string $familyId): string
++    {
++        return "auth:refresh-family:{$familyId}";
++    }
+ }
+\ No newline at end of file
+diff --git a/app/Services/StaffManagementService.php b/app/Services/StaffManagementService.php
+index d80e76b..3d2d6ad 100644
+--- a/app/Services/StaffManagementService.php
++++ b/app/Services/StaffManagementService.php
+@@ -78,6 +78,25 @@ public function create(
+         return $staff;
+     }
+ 
++    public function update(
++        Staff $actor,
++        Staff $target,
++        array $data
++    ): Staff {
++        $this->authorizeStaffAction(
++            actor: $actor,
++            target: $target,
++            permission: 'staff.update'
++        );
++
++        $target->update($data);
++
++        // Name/email are not part of authz data, but keep cache coherent.
++        $this->authorizationCacheService->refresh($target->id);
++
++        return $target;
++    }
++
+     /*
+     |--------------------------------------------------------------------------
+     | Delete Staff
+diff --git a/routes/api.php b/routes/api.php
+index 9f78e6c..605bcf5 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -2,6 +2,7 @@
+ 
+ use App\Http\Controllers\Auth\CustomerAuthController;
+ use App\Http\Controllers\Auth\StaffAuthController;
++use App\Http\Controllers\Admin\PermissionController;
+ use App\Http\Controllers\Admin\StaffController;
+ use Illuminate\Support\Facades\Route;
+ 
+@@ -21,9 +22,13 @@
+         // Public - refresh token is the credential
+         Route::post('/refresh', [StaffAuthController::class, 'refresh']);
+ 
++        // Public - refresh token is the credential (works even when the
++        // access token has already expired)
++        Route::post('/logout', [StaffAuthController::class, 'logout']);
++
+         // Protected - requires valid JWT
+         Route::middleware('auth:staff')->group(function () {
+-            Route::post('/logout', [StaffAuthController::class, 'logout']);
++            Route::get('/me', [StaffAuthController::class, 'me']);
+         });
+     });
+ 
+@@ -45,9 +50,12 @@
+         // Public - refresh token is the credential
+         Route::post('/refresh', [CustomerAuthController::class, 'refresh']);
+ 
++        // Public - refresh token is the credential
++        Route::post('/logout', [CustomerAuthController::class, 'logout']);
++
+         // Protected - requires valid JWT
+         Route::middleware('auth:customer')->group(function () {
+-            Route::post('/logout', [CustomerAuthController::class, 'logout']);
++            Route::get('/me', [CustomerAuthController::class, 'me']);
+         });
+     });
+ 
+@@ -86,4 +94,9 @@
+             '/{staff}/permissions',
+             [StaffController::class, 'revokePermission']
+         );
+-    });
+\ No newline at end of file
++    });
++
++Route::middleware('auth:staff')->group(function () {
++    Route::get('/roles', [PermissionController::class, 'roles']);
++    Route::get('/permissions', [PermissionController::class, 'permissions']);
++});

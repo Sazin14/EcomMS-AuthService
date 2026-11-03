@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\CustomerAuthController;
 use App\Http\Controllers\Auth\StaffAuthController;
 use App\Http\Controllers\Admin\StaffController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\PermissionController;
 
 Route::prefix('auth')->group(function () {
 
@@ -24,6 +25,10 @@ Route::prefix('auth')->group(function () {
         // Protected - requires valid JWT
         Route::middleware('auth:staff')->group(function () {
             Route::post('/logout', [StaffAuthController::class, 'logout']);
+
+        Route::middleware('auth:staff')->group(function () {
+            Route::get('/me', [StaffAuthController::class, 'me']);
+        });
         });
     });
 
@@ -48,7 +53,12 @@ Route::prefix('auth')->group(function () {
         // Protected - requires valid JWT
         Route::middleware('auth:customer')->group(function () {
             Route::post('/logout', [CustomerAuthController::class, 'logout']);
+
+        Route::middleware('auth:customer')->group(function () {
+            Route::get('/me', [CustomerAuthController::class, 'me']);
         });
+        });
+
     });
 
     
@@ -87,3 +97,8 @@ Route::prefix('staff')
             [StaffController::class, 'revokePermission']
         );
     });
+
+Route::middleware('auth:staff')->group(function () {
+    Route::get('/roles', [PermissionController::class, 'roles']);
+    Route::get('/permissions', [PermissionController::class, 'permissions']);
+});

@@ -56,4 +56,23 @@ class StaffAuthController extends Controller
             'message' => 'Logged out successfully.',
         ]);
     }
+
+    public function me(): JsonResponse
+    {
+        /** @var Staff $staff */
+        $staff = auth('staff')->user();
+
+        return response()->json([
+            'user' => [
+                'id' => $staff->id,
+                'name' => $staff->name,
+                'email' => $staff->email,
+                'type' => 'staff',
+                'roles' => $staff->getRoleNames(),
+                'permissions' => $staff->getAllPermissions()
+                    ->pluck('name')
+                    ->values(),
+            ],
+        ]);
+    }
 }
