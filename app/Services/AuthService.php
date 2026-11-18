@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Customer;
 use App\Models\Staff;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Redis;
 use RuntimeException;
 
 class AuthService
@@ -14,9 +15,6 @@ class AuthService
         private AuthorizationCacheService $authorizationCacheService,
     ) {
     }
-
-    
-    
 
     public function loginStaff(array $credentials): array
     {
@@ -36,16 +34,11 @@ class AuthService
         );
     }
 
-    public function logoutStaff(string $refreshToken): void
+    public function logoutStaff(string $refreshToken, ?string $accessToken = null): void
     {
         $this->refreshTokenService->revoke($refreshToken);
+        $this->revokeAccessToken('staff', $accessToken);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Customer
-    |--------------------------------------------------------------------------
-    */
 
     public function registerCustomer(array $data): Customer
     {
@@ -74,16 +67,35 @@ class AuthService
         );
     }
 
-    public function logoutCustomer(string $refreshToken): void
+    public function logoutCustomer(string $refreshToken, ?string $accessToken = null): void
     {
         $this->refreshTokenService->revoke($refreshToken);
+        $this->revokeAccessToken('customer', $accessToken);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Login
-    |--------------------------------------------------------------------------
-    */
+    private function revokeAccessToken(string $guard, ?string $accessToken): void
+    {
+        if (! $accessToken) {
+            return;
+        }
+
+        try {
+            $payload = auth($guard)->setToken($accessToken)->getPayload();
+        } catch (\Throwable) {
+            return;
+        }
+
+        $ttl = (int) $payload->get('exp') - time();
+
+        if ($ttl > 0) {
+            Redis::connection('authz')->setex('revoked-jti:'.$payload->get('jti'), $ttl, '1');
+        }
+
+        try {
+            auth($guard)->invalidate();
+        } catch (\Throwable) {
+        }
+    }
 
     private function login(
         string $guard,
@@ -98,10 +110,6 @@ class AuthService
 
         $user = auth($guard)->user();
 
-        /*
-         * Staff authorization data is cached only after
-         * authentication succeeds.
-         */
         if ($userType === 'staff') {
             $this->authorizationCacheService->put($user);
         }
@@ -125,24 +133,18 @@ class AuthService
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Refresh
-    |--------------------------------------------------------------------------
-    */
-
     private function refresh(
         string $guard,
         string $refreshToken,
         string $userType
     ): array {
-        $data = $this->refreshTokenService->validate($refreshToken);
+        $peek = $this->refreshTokenService->peek($refreshToken);
 
-        if ($data['user_type'] !== $userType) {
+        if (($peek['user_type'] ?? null) !== $userType) {
             throw new RuntimeException('Invalid refresh token.');
         }
 
-        $newRefreshToken = $this->refreshTokenService->rotate(
+        [$data, $newRefreshToken] = $this->refreshTokenService->rotate(
             $refreshToken
         );
 
@@ -157,14 +159,6 @@ class AuthService
 
         $accessToken = auth($guard)->login($user);
 
-        /*
-         * Usually we don't need to rebuild the authorization
-         * cache on every refresh because roles/permissions
-         * have not changed.
-         *
-         * However, refreshing it here is acceptable if you
-         * want the cache to self-heal whenever the staff logs in.
-         */
         if ($userType === 'staff') {
             $this->authorizationCacheService->put($user);
         }
@@ -182,12 +176,6 @@ class AuthService
             ],
         ];
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Find User
-    |--------------------------------------------------------------------------
-    */
 
     private function findUser(
         string $userType,

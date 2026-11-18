@@ -2,74 +2,41 @@
 
 use App\Http\Controllers\Auth\CustomerAuthController;
 use App\Http\Controllers\Auth\StaffAuthController;
+use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\StaffController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Admin\PermissionController;
 
 Route::prefix('auth')->group(function () {
-
-    /*
-    |--------------------------------------------------------------------------
-    | Staff Authentication
-    |--------------------------------------------------------------------------
-    */
-
     Route::prefix('staff')->group(function () {
-
-        // Public
         Route::post('/login', [StaffAuthController::class, 'login']);
 
-        // Public - refresh token is the credential
         Route::post('/refresh', [StaffAuthController::class, 'refresh']);
 
-        // Protected - requires valid JWT
-        Route::middleware('auth:staff')->group(function () {
-            Route::post('/logout', [StaffAuthController::class, 'logout']);
+        Route::post('/logout', [StaffAuthController::class, 'logout']);
 
         Route::middleware('auth:staff')->group(function () {
             Route::get('/me', [StaffAuthController::class, 'me']);
         });
-        });
     });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Customer Authentication
-    |--------------------------------------------------------------------------
-    */
-
     Route::prefix('customer')->group(function () {
-
-        // Public
         Route::post('/register', [CustomerAuthController::class, 'register']);
 
-        // Public
         Route::post('/login', [CustomerAuthController::class, 'login']);
 
-        // Public - refresh token is the credential
         Route::post('/refresh', [CustomerAuthController::class, 'refresh']);
 
-        // Protected - requires valid JWT
-        Route::middleware('auth:customer')->group(function () {
-            Route::post('/logout', [CustomerAuthController::class, 'logout']);
+        Route::post('/logout', [CustomerAuthController::class, 'logout']);
 
         Route::middleware('auth:customer')->group(function () {
             Route::get('/me', [CustomerAuthController::class, 'me']);
         });
-        });
-
     });
-
-    
-
 });
-
 
 Route::prefix('staff')
     ->middleware('auth:staff')
     ->group(function () {
-
         Route::get('/', [StaffController::class, 'index']);
         Route::post('/', [StaffController::class, 'store']);
 

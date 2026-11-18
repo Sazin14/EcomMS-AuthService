@@ -29,12 +29,6 @@ class Customer extends Authenticatable implements JWTSubject
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | JWT
-    |--------------------------------------------------------------------------
-    */
-
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -44,6 +38,8 @@ class Customer extends Authenticatable implements JWTSubject
     {
         return [
             'type' => 'customer',
+            'name' => $this->name,
+            'email' => $this->email,
         ];
     }
 }

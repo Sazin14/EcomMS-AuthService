@@ -9,17 +9,11 @@ class AuthorizationCacheService
 {
     private const PREFIX = 'authz:staff:';
 
-    /**
-     * Get Redis key for a staff member.
-     */
     private function key(int $staffId): string
     {
         return self::PREFIX . $staffId;
     }
 
-    /**
-     * Build authorization data from the database.
-     */
     public function build(Staff $staff): array
     {
         $staff->loadMissing('roles.permissions');
@@ -42,14 +36,11 @@ class AuthorizationCacheService
         ];
     }
 
-    /**
-     * Store/replace authorization data in Redis.
-     */
     public function put(Staff $staff): array
     {
         $data = $this->build($staff);
 
-        Redis::set(
+        Redis::connection('authz')->set(
             $this->key($staff->id),
             json_encode($data)
         );
@@ -57,12 +48,9 @@ class AuthorizationCacheService
         return $data;
     }
 
-    /**
-     * Retrieve authorization data from Redis.
-     */
     public function get(int $staffId): ?array
     {
-        $data = Redis::get($this->key($staffId));
+        $data = Redis::connection('authz')->get($this->key($staffId));
 
         if ($data === null) {
             return null;
@@ -71,9 +59,6 @@ class AuthorizationCacheService
         return json_decode($data, true);
     }
 
-    /**
-     * Check whether a permission exists in cached authorization data.
-     */
     public function hasPermission(
         int $staffId,
         string $permission
@@ -91,9 +76,6 @@ class AuthorizationCacheService
         );
     }
 
-    /**
-     * Check whether a staff member has a role.
-     */
     public function hasRole(
         int $staffId,
         string $role
@@ -111,17 +93,11 @@ class AuthorizationCacheService
         );
     }
 
-    /**
-     * Remove authorization cache.
-     */
     public function forget(int $staffId): void
     {
-        Redis::del($this->key($staffId));
+        Redis::connection('authz')->del($this->key($staffId));
     }
 
-    /**
-     * Rebuild authorization cache directly from DB.
-     */
     public function refresh(int $staffId): ?array
     {
         $staff = Staff::find($staffId);

@@ -8,54 +8,65 @@ use RuntimeException;
 
 class RefreshTokenService
 {
-    
+    private const CLAIM = <<<'LUA'
+local raw = redis.call('GET', KEYS[1])
+if not raw then return nil end
+local data = cjson.decode(raw)
+if data['revoked'] then return {'reused', raw} end
+data['revoked'] = true
+local ttl = redis.call('TTL', KEYS[1])
+if ttl > 0 then redis.call('SETEX', KEYS[1], ttl, cjson.encode(data)) end
+return {'ok', raw}
+LUA;
+
     public function create(
         int $userId,
         string $userType,
         ?string $familyId = null
     ): string {
         $token = bin2hex(random_bytes(64));
-
         $tokenHash = hash('sha256', $token);
-
         $familyId ??= (string) Str::uuid();
 
-        $expiresAt = now()->addMinutes(
-            config('jwt.refresh_ttl')
-        );
+        $ttl = (int) config('jwt.refresh_ttl') * 60;
 
         $data = [
             'user_id' => $userId,
             'user_type' => $userType,
             'family_id' => $familyId,
-            'expires_at' => $expiresAt->timestamp,
+            'expires_at' => now()->addSeconds($ttl)->timestamp,
             'revoked' => false,
         ];
 
-        $ttl = now()->diffInSeconds($expiresAt);
+        Redis::setex($this->key($tokenHash), $ttl, json_encode($data));
 
-        Redis::setex(
-            $this->key($tokenHash),
-            (int) $ttl,
-            json_encode($data)
-        );
+        Redis::sadd($this->familyKey($familyId), $tokenHash);
+        Redis::expire($this->familyKey($familyId), $ttl);
 
         return $token;
     }
 
-    
+    public function peek(string $token): array
+    {
+        $raw = Redis::get($this->key(hash('sha256', $token)));
+
+        if ($raw === null || $raw === false) {
+            throw new RuntimeException('Invalid or expired refresh token.');
+        }
+
+        return (array) json_decode($raw, true);
+    }
 
     public function validate(string $token): array
     {
         $tokenHash = hash('sha256', $token);
+        $raw = Redis::get($this->key($tokenHash));
 
-        $data = Redis::get($this->key($tokenHash));
-
-        if ($data === null) {
+        if ($raw === null || $raw === false) {
             throw new RuntimeException('Invalid or expired refresh token.');
         }
 
-        $data = json_decode($data, true);
+        $data = json_decode($raw, true);
 
         if ($data['revoked'] ?? false) {
             throw new RuntimeException('Refresh token has been revoked.');
@@ -65,128 +76,63 @@ class RefreshTokenService
             throw new RuntimeException('Refresh token has expired.');
         }
 
-        return [
-            'token_hash' => $tokenHash,
-            ...$data,
-        ];
+        return ['token_hash' => $tokenHash, ...$data];
     }
 
-    
     public function revoke(string $token): void
     {
-        $tokenHash = hash('sha256', $token);
-
-        $key = $this->key($tokenHash);
-
-        $data = Redis::get($key);
-
-        if ($data === null) {
-            return;
-        }
-
-        $data = json_decode($data, true);
-
-        $data['revoked'] = true;
-
-        $ttl = Redis::ttl($key);
-
-        if ($ttl > 0) {
-            Redis::setex(
-                $key,
-                $ttl,
-                json_encode($data)
-            );
-        }
+        Redis::eval(self::CLAIM, 1, $this->key(hash('sha256', $token)));
     }
-
-
 
     public function revokeFamily(string $familyId): void
     {
-        $keys = Redis::keys('auth:refresh:*');
+        $hashes = Redis::smembers($this->familyKey($familyId)) ?: [];
 
-        if (!is_array($keys)) {
-            return;
-        }
-
-        foreach ($keys as $key) {
-            $data = Redis::get($key);
-
-            if ($data === null) {
-                continue;
-            }
-
-            $data = json_decode($data, true);
-
-            if (($data['family_id'] ?? null) !== $familyId) {
-                continue;
-            }
-
-            $data['revoked'] = true;
-
-            $ttl = Redis::ttl($key);
-
-            if ($ttl > 0) {
-                Redis::setex(
-                    $key,
-                    $ttl,
-                    json_encode($data)
-                );
-            }
+        foreach ($hashes as $hash) {
+            Redis::eval(self::CLAIM, 1, $this->key((string) $hash));
         }
     }
 
-    
-
-    public function rotate(string $token): string
+    /** @return array{0: array{user_id:int, user_type:string, family_id:string, expires_at:int}, 1: string} */
+    public function rotate(string $token): array
     {
-        $tokenHash = hash('sha256', $token);
+        $result = Redis::eval(self::CLAIM, 1, $this->key(hash('sha256', $token)));
 
-        $key = $this->key($tokenHash);
-
-        $rawData = Redis::get($key);
-
-        if ($rawData === null) {
-            throw new RuntimeException(
-                'Invalid or expired refresh token.'
-            );
+        if (! is_array($result) || count($result) !== 2) {
+            throw new RuntimeException('Invalid or expired refresh token.');
         }
 
-        $data = json_decode($rawData, true);
+        [$state, $raw] = $result;
+        $data = json_decode((string) $raw, true);
 
-        /*
-        * A revoked refresh token is being used again.
-        * This indicates possible token theft/reuse.
-        */
-        if ($data['revoked'] ?? false) {
-            $this->revokeFamily($data['family_id']);
+        if ($state === 'reused') {
+            if (! empty($data['family_id'])) {
+                $this->revokeFamily($data['family_id']);
+            }
 
-            throw new RuntimeException(
-                'Refresh token reuse detected. Token family revoked.'
-            );
+            throw new RuntimeException('Refresh token reuse detected. Please log in again.');
         }
 
         if (($data['expires_at'] ?? 0) < now()->timestamp) {
-            throw new RuntimeException(
-                'Refresh token has expired.'
-            );
+            throw new RuntimeException('Refresh token has expired.');
         }
 
-        // Revoke the current refresh token.
-        $this->revoke($token);
-
-        // Create replacement token in the same family.
-        return $this->create(
-            userId: $data['user_id'],
-            userType: $data['user_type'],
-            familyId: $data['family_id'],
+        $newToken = $this->create(
+            userId: (int) $data['user_id'],
+            userType: (string) $data['user_type'],
+            familyId: (string) $data['family_id'],
         );
-    }
 
-    
+        return [$data, $newToken];
+    }
 
     private function key(string $tokenHash): string
     {
         return "auth:refresh:{$tokenHash}";
+    }
+
+    private function familyKey(string $familyId): string
+    {
+        return "auth:refresh-family:{$familyId}";
     }
 }

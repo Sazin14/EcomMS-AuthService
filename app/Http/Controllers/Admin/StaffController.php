@@ -19,11 +19,10 @@ class StaffController extends Controller
     ) {
     }
 
-    /**
-     * List all staff members.
-     */
     public function index(): JsonResponse
     {
+        abort_unless(auth('staff')->user()->can('staff.view'), 403, 'You do not have permission [staff.view].');
+
         $staff = Staff::with('roles')
             ->latest()
             ->paginate(20);
@@ -31,9 +30,6 @@ class StaffController extends Controller
         return response()->json($staff);
     }
 
-    /**
-     * Create a new staff member.
-     */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -79,27 +75,12 @@ class StaffController extends Controller
         ], 201);
     }
 
-    /**
-     * Show a specific staff member.
-     */
-    // public function show(Staff $staff): JsonResponse
-    // {
-    //     $staff->load('roles', 'permissions');
-
-    //     return response()->json([
-    //         'staff' => [
-    //             'id' => $staff->id,
-    //             'name' => $staff->name,
-    //             'email' => $staff->email,
-    //             'roles' => $staff->getRoleNames(),
-    //             'permissions' => $staff->getPermissionNames(),
-    //         ],
-    //     ]);
-    // }
-
     public function show(Staff $staff): JsonResponse
     {
-        
+        /** @var Staff $actor */
+        $actor = auth('staff')->user();
+
+        abort_unless($actor->id === $staff->id || $actor->can('staff.view'), 403, 'You do not have permission [staff.view].');
 
         $staff->load('roles', 'permissions');
 
@@ -109,17 +90,12 @@ class StaffController extends Controller
                 'name' => $staff->name,
                 'email' => $staff->email,
                 'roles' => $staff->getRoleNames(),
-                // everything the user can do (via roles + direct)
                 'permissions' => $staff->getAllPermissions()->pluck('name')->values(),
-                // only permissions granted directly to this user
                 'direct_permissions' => $staff->getPermissionNames(),
             ],
         ]);
     }
 
-    /**
-     * Update staff information.
-     */
     public function update(
         Request $request,
         Staff $staff
@@ -140,7 +116,19 @@ class StaffController extends Controller
             ],
         ]);
 
-        $staff->update($validated);
+        try {
+            $this->staffManagementService->updateProfile(
+                actor: auth('staff')->user(),
+                target: $staff,
+                data: $validated
+            );
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 403);
+        }
+
+        $staff->refresh();
 
         return response()->json([
             'message' => 'Staff updated successfully.',
@@ -152,9 +140,6 @@ class StaffController extends Controller
         ]);
     }
 
-    /**
-     * Delete a staff member.
-     */
     public function destroy(Staff $staff): JsonResponse
     {
         try {
@@ -173,9 +158,6 @@ class StaffController extends Controller
         }
     }
 
-    /**
-     * Assign a role to a staff member.
-     */
     public function assignRole(
         Request $request,
         Staff $staff
@@ -208,9 +190,6 @@ class StaffController extends Controller
         }
     }
 
-    /**
-     * Remove a role from a staff member.
-     */
     public function removeRole(
         Request $request,
         Staff $staff
@@ -243,9 +222,6 @@ class StaffController extends Controller
         }
     }
 
-    /**
-     * Assign a direct permission to a staff member.
-     */
     public function assignPermission(
         Request $request,
         Staff $staff
@@ -278,9 +254,6 @@ class StaffController extends Controller
         }
     }
 
-    /**
-     * Revoke a direct permission from a staff member.
-     */
     public function revokePermission(
         Request $request,
         Staff $staff

@@ -7,12 +7,10 @@ use App\Models\Staff;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class PermissionController extends Controller
 {
-    /**
-     * List available permissions.
-     */
     public function index(): JsonResponse
     {
         $permissions = Permission::where(
@@ -25,9 +23,6 @@ class PermissionController extends Controller
         ]);
     }
 
-    /**
-     * Create a new permission.
-     */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -50,9 +45,6 @@ class PermissionController extends Controller
         ], 201);
     }
 
-    /**
-     * Give a direct permission to a staff member.
-     */
     public function assign(
         Request $request,
         Staff $staff
@@ -77,9 +69,6 @@ class PermissionController extends Controller
         ]);
     }
 
-    /**
-     * Remove a direct permission from a staff member.
-     */
     public function revoke(
         Request $request,
         Staff $staff
@@ -104,9 +93,6 @@ class PermissionController extends Controller
         ]);
     }
 
-    /**
-     * Show direct permissions assigned to a staff member.
-     */
     public function staffPermissions(
         Staff $staff
     ): JsonResponse {
@@ -115,5 +101,46 @@ class PermissionController extends Controller
                 ->pluck('name')
                 ->values(),
         ]);
+    }
+
+    public function roles(): JsonResponse
+    {
+        $this->ensureCan('role.view');
+
+        $roles = Role::where('guard_name', 'staff')
+            ->with('permissions:id,name')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Role $role) => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'permissions' => $role->permissions->pluck('name')->values(),
+            ]);
+
+        return response()->json(['roles' => $roles]);
+    }
+
+    public function permissions(): JsonResponse
+    {
+        $this->ensureCan('permission.view');
+
+        return response()->json([
+            'permissions' => Permission::where('guard_name', 'staff')
+                ->orderBy('name')
+                ->pluck('name')
+                ->values(),
+        ]);
+    }
+
+    private function ensureCan(string $permission): void
+    {
+        /** @var Staff $staff */
+        $staff = auth('staff')->user();
+
+        abort_unless(
+            $staff->hasRole('super-admin') || $staff->getAllPermissions()->contains('name', $permission),
+            403,
+            'You are not allowed to do that.'
+        );
     }
 }

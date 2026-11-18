@@ -34,12 +34,6 @@ class Staff extends Authenticatable implements JWTSubject
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | JWT
-    |--------------------------------------------------------------------------
-    */
-
     public function getJWTIdentifier()
     {
         return $this->getKey();

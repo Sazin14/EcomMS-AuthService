@@ -49,7 +49,8 @@ class StaffAuthController extends Controller
     public function logout(RefreshTokenRequest $request): JsonResponse
     {
         $this->authService->logoutStaff(
-            $request->validated('refresh_token')
+            $request->validated('refresh_token'),
+            $request->bearerToken()
         );
 
         return response()->json([

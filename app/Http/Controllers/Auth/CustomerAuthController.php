@@ -68,11 +68,27 @@ class CustomerAuthController extends Controller
     public function logout(RefreshTokenRequest $request): JsonResponse
     {
         $this->authService->logoutCustomer(
-            $request->validated('refresh_token')
+            $request->validated('refresh_token'),
+            $request->bearerToken()
         );
 
         return response()->json([
             'message' => 'Logged out successfully.',
+        ]);
+    }
+
+    public function me(): JsonResponse
+    {
+        /** @var \App\Models\Customer $customer */
+        $customer = auth('customer')->user();
+
+        return response()->json([
+            'user' => [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'type' => 'customer',
+            ],
         ]);
     }
 }

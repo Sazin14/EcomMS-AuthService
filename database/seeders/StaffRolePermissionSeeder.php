@@ -192,14 +192,31 @@ class StaffRolePermissionSeeder extends Seeder
 
             'inventory.view',
             'inventory.adjust',
+            'inventory.transfer',
             'inventory.receive',
+            'inventory.reserve',
+            'inventory.manage',
+            'warehouse.manage',
+
+            'purchasing.view',
+            'purchasing.manage',
 
             'sales.view',
             'sales.report',
 
+            // OrderService: the admin can run the whole order / payment / return / refund workflow
             'order.view',
-            'notification.view',
+            'order.confirm',
+            'order.cancel',
+            'fulfillment.manage',
+            'payment.manage',
+            'return.manage',
+            'refund.manage',
 
+            'notification.view',
+            'notification.manage',
+
+            'promotion.view',
             'dashboard.view',
             'report.view',
         ]);
@@ -279,6 +296,7 @@ class StaffRolePermissionSeeder extends Seeder
             'warehouse.manage',
             'purchasing.view',
             'purchasing.manage',
+            'notification.view',   // stock low / out alerts
         ]);
 
         /*
@@ -304,6 +322,9 @@ class StaffRolePermissionSeeder extends Seeder
             'order.cancel',
             'fulfillment.manage',
             'return.manage',
+            'refund.manage',        // completes returns end to end (return -> refund)
+            'payment.manage',       // sees the payment attempts when a customer says "I paid"
+            'notification.view',
 
             'promotion.view',
             'promotion.create',
