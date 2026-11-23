@@ -14,6 +14,7 @@ class StaffRolePermissionSeeder extends Seeder
     {
         $permissions = [
             // Staff
+            'customer.view',
             'staff.view',
             'staff.create',
             'staff.update',
@@ -160,6 +161,7 @@ class StaffRolePermissionSeeder extends Seeder
         */
 
         $admin->syncPermissions([
+            'customer.view',
             'staff.view',
             'staff.create',
             'staff.update',
@@ -231,6 +233,7 @@ class StaffRolePermissionSeeder extends Seeder
             'dashboard.view',
             'report.view',
 
+            'customer.view',
             'staff.view',
 
             'product.view',

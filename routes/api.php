@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\CustomerAuthController;
 use App\Http\Controllers\Auth\StaffAuthController;
 use App\Http\Controllers\Admin\PermissionController;
+use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\StaffController;
 use Illuminate\Support\Facades\Route;
 
@@ -69,3 +70,10 @@ Route::middleware('auth:staff')->group(function () {
     Route::get('/roles', [PermissionController::class, 'roles']);
     Route::get('/permissions', [PermissionController::class, 'permissions']);
 });
+
+Route::prefix("customers")
+    ->middleware("auth:staff")
+    ->group(function () {
+        Route::get("/", [CustomerController::class, "index"]);
+        Route::get("/{customer}", [CustomerController::class, "show"]);
+    });
