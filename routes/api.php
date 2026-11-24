@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\CustomerAuthController;
 use App\Http\Controllers\Auth\StaffAuthController;
 use App\Http\Controllers\Admin\PermissionController;
+use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\StaffController;
 use Illuminate\Support\Facades\Route;
@@ -76,4 +77,10 @@ Route::prefix("customers")
     ->group(function () {
         Route::get("/", [CustomerController::class, "index"]);
         Route::get("/{customer}", [CustomerController::class, "show"]);
+    });
+
+Route::prefix("activity-logs")
+    ->middleware("auth:staff")
+    ->group(function () {
+        Route::get("/", [ActivityLogController::class, "index"]);
     });

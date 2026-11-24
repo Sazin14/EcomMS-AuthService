@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(\App\Http\Middleware\RecordStaffActivity::class);
         // Requests arrive through nginx + Kong. Trust them, so request()->ip() is the real client
         // (rate limits, logs) and https is detected. TRUSTED_PROXIES: comma-separated IPs / CIDRs.
         $middleware->trustProxies(at: array_values(array_filter(array_map('trim', explode(',', (string) env(
