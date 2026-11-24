@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\CustomerAuthController;
 use App\Http\Controllers\Auth\StaffAuthController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\ActivityLogController;
+use App\Http\Controllers\Admin\StoreSettingController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\StaffController;
 use Illuminate\Support\Facades\Route;
@@ -83,4 +84,11 @@ Route::prefix("activity-logs")
     ->middleware("auth:staff")
     ->group(function () {
         Route::get("/", [ActivityLogController::class, "index"]);
+    });
+
+Route::prefix("settings")
+    ->middleware("auth:staff")
+    ->group(function () {
+        Route::get("/", [StoreSettingController::class, "index"]);
+        Route::put("/", [StoreSettingController::class, "update"]);
     });
